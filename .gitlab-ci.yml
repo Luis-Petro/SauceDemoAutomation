@@ -1,0 +1,44 @@
+image: gradle:latest
+
+stages:
+  - build
+  - test
+
+variables:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+  FF_USE_FASTZIP: "true"
+  ARTIFACT_COMPRESSION_LEVEL: "fast"
+  CACHE_COMPRESSION_LEVEL: "fast"
+
+before_script:
+  - export GRADLE_USER_HOME=`pwd`/.gradle
+  - apt-get -y update
+  - wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+  - apt install ./google-chrome-stable_current_amd64.deb -y
+  - google-chrome --version
+  - gradle assemble -x test --build-cache --gradle-user-home cache/ -i
+
+build:
+  stage: build
+  script:
+    - gradle assemble -x test --build-cache --gradle-user-home cache/ -i
+
+tests:
+  stage: test
+  cache:
+    key:
+      files:
+        - build.gradle
+    paths:
+      - build/
+      - cache/
+      - .gradle/
+      - builds
+  script:
+    - gradle clean test --tests "com.co.vozy.runners.CompraSwagLabsRunner" -Denvironment=prod -i
+  artifacts:
+    when: always
+    name: Serenity staging enviroment report
+    paths:
+      - target/site/serenity
+    expire_in: 1 week
