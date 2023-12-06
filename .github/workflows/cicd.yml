@@ -70,4 +70,3 @@ jobs:
           name: Serenity staging enviroment report
           path: target/site/serenity
           retention-days: 7
-
