@@ -1,0 +1,67 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Gradle
+        uses: gradle/wrapper-action@v2
+
+      - name: Install Google Chrome
+        run: |
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install ./google-chrome-stable_current_amd64.deb -y
+          google-chrome --version
+
+      - name: Build
+        run: |
+          export GRADLE_USER_HOME=$GITHUB_WORKSPACE/.gradle
+          ./gradlew assemble -x test --build-cache --gradle-user-home cache/ -i
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Gradle
+        uses: gradle/wrapper-action@v2
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v2
+        with:
+          path: |
+            ${{ github.workspace }}/.gradle/caches
+            ${{ github.workspace }}/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - name: Cache Gradle build
+        uses: actions/cache@v2
+        with:
+          path: |
+            ${{ github.workspace }}/build
+          key: ${{ runner.os }}-gradle-build-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'build.gradle') }}
+
+      - name: Run Tests
+        run: |
+          ./gradlew clean test --tests "com.co.vozy.runners.CompraSwagLabsRunner" -Denvironment=prod -i
+
+      - name: Archive Serenity Report
+        if: always()
+        uses: actions/upload-artifact@v2
+        with:
+          name: SERENITY_REPORT
+          path: target/site/serenity
