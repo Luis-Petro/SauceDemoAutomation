@@ -1,67 +1,73 @@
-name: CI/CD
+name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
+    branches: [ master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    container: gradle:latest
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+      FF_USE_FASTZIP: "true"
+      ARTIFACT_COMPRESSION_LEVEL: "fast"
+      CACHE_COMPRESSION_LEVEL: "fast"
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Set up Gradle
-        uses: gradle/wrapper-action@v2
+      - name: Update apt
+        run: apt-get update -y
 
-      - name: Install Google Chrome
-        run: |
-          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo apt install ./google-chrome-stable_current_amd64.deb -y
-          google-chrome --version
+      - name: Download Chrome
+        run: wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
 
-      - name: Build
-        run: |
-          export GRADLE_USER_HOME=$GITHUB_WORKSPACE/.gradle
-          ./gradlew assemble -x test --build-cache --gradle-user-home cache/ -i
+      - name: Install Chrome
+        run: apt install ./google-chrome-stable_current_amd64.deb -y
 
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Set up Gradle
-        uses: gradle/wrapper-action@v2
+      - name: Check Chrome version
+        run: google-chrome --version
 
       - name: Cache Gradle dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
-          path: |
-            ${{ github.workspace }}/.gradle/caches
-            ${{ github.workspace }}/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('build.gradle') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
-      - name: Cache Gradle build
-        uses: actions/cache@v2
+      - name: Assemble project
+        run: gradle assemble -x test --build-cache --gradle-user-home cache/ -i
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    container: gradle:latest
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+      FF_USE_FASTZIP: "true"
+      ARTIFACT_COMPRESSION_LEVEL: "fast"
+      CACHE_COMPRESSION_LEVEL: "fast"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Restore cached dependencies
+        uses: actions/cache@v3
         with:
-          path: |
-            ${{ github.workspace }}/build
-          key: ${{ runner.os }}-gradle-build-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'build.gradle') }}
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('build.gradle') }}
 
-      - name: Run Tests
-        run: |
-          ./gradlew clean test --tests "com.co.vozy.runners.CompraSwagLabsRunner" -Denvironment=prod -i
+      - name: Run tests
+        run: gradle clean test --tests "com.co.vozy.runners.CompraSwagLabsRunner" -Denvironment=prod -i
 
-      - name: Archive Serenity Report
-        if: always()
-        uses: actions/upload-artifact@v2
+      - name: Upload Serenity report
+        uses: actions/upload-artifact@v3
         with:
-          name: SERENITY_REPORT
+          name: Serenity staging enviroment report
           path: target/site/serenity
+          retention-days: 7
+
